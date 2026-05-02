@@ -15,15 +15,15 @@ The simulation is independent from the frontend. A GUI renderer can consume the 
 
 ## Mod Model
 
-`core.vgmod` is JSON with a `.vgmod` extension. It declares blocks, items, mobs and runtime slots.
+`core.vgmod` is TOML with a `.vgmod` extension. It declares blocks, items and mobs.
 
 Content ids are namespaced as `mod:id`, for example `core:grass`.
 
 Definitions can be declarative only, or reference hooks:
 
-- V hook: `mods/core/scripts/behaviors.v:slime_bounce`
-- C hook: `mods/core/native/crop_growth.c:vground_crop_growth_tick`
-- reserved future runtimes: Lua and JVM slots are present in the runtime registry
+- Mod runtime: `runtime = "v"` at the top of the mod.
+- Hook entries are relative to the mod directory, for example `scripts/behaviors.v:slime_bounce`.
+- Future mods can use other runtime names such as `c`, `lua` or `jvm`; the registry treats runtime as a per-mod contract.
 
 The prototype does not dynamically compile or load mod code yet. It validates and exposes the hook metadata so the ABI can be implemented without changing content manifests.
 
@@ -43,4 +43,4 @@ This is intentionally conservative. It gives a clear place to evolve toward:
 - actor mailboxes
 - green-thread scheduling
 - native FFI hooks
-- sandboxed external runtimes
+- sandboxed external runtime adapters

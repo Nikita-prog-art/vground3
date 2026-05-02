@@ -1,154 +1,90 @@
-{
-  "schema": 1,
-  "id": "core",
-  "name": "VGround Core",
-  "version": "0.0.1",
-  "description": "Base blocks, items, mobs and runtime slots for vground.",
-  "runtimes": [
-    {
-      "id": "core:native_v",
-      "language": "v",
-      "kind": "native",
-      "entry": "mods/core/scripts/behaviors.v",
-      "status": "planned"
-    },
-    {
-      "id": "core:native_c",
-      "language": "c",
-      "kind": "native_ffi",
-      "entry": "mods/core/native/crop_growth.c",
-      "status": "planned"
-    },
-    {
-      "id": "core:lua",
-      "language": "lua",
-      "kind": "external_vm",
-      "entry": "",
-      "status": "reserved"
-    },
-    {
-      "id": "core:jvm",
-      "language": "java",
-      "kind": "external_vm",
-      "entry": "",
-      "status": "reserved"
-    }
-  ],
-  "blocks": [
-    {
-      "id": "core:grass",
-      "name": "Grass",
-      "glyph": ".",
-      "solid": false,
-      "tags": ["ground", "walkable"],
-      "hooks": []
-    },
-    {
-      "id": "core:stone",
-      "name": "Stone",
-      "glyph": "#",
-      "solid": true,
-      "tags": ["ground", "solid", "mineable"],
-      "hooks": []
-    },
-    {
-      "id": "core:water",
-      "name": "Water",
-      "glyph": "~",
-      "solid": true,
-      "tags": ["liquid", "blocks_basic_mobs"],
-      "hooks": []
-    },
-    {
-      "id": "core:tree",
-      "name": "Tree",
-      "glyph": "T",
-      "solid": true,
-      "tags": ["wood", "solid", "harvestable"],
-      "hooks": []
-    },
-    {
-      "id": "core:crop",
-      "name": "Crop",
-      "glyph": ",",
-      "solid": false,
-      "tags": ["farm", "harvestable"],
-      "hooks": [
-        {
-          "language": "c",
-          "entry": "mods/core/native/crop_growth.c:vground_crop_growth_tick",
-          "abi": "c"
-        }
-      ]
-    }
-  ],
-  "items": [
-    {
-      "id": "core:seed",
-      "name": "Seed",
-      "glyph": "*",
-      "tags": ["farm"],
-      "hooks": []
-    },
-    {
-      "id": "core:wood",
-      "name": "Wood",
-      "glyph": "w",
-      "tags": ["crafting"],
-      "hooks": []
-    }
-  ],
-  "mobs": [
-    {
-      "id": "core:slime",
-      "name": "Slime",
-      "glyph": "s",
-      "max_hp": 8,
-      "behavior": "slime_bounce",
-      "runtime": "core:native_v",
-      "tick_ms": 90,
-      "tags": ["hostile", "basic"],
-      "hooks": [
-        {
-          "language": "v",
-          "entry": "mods/core/scripts/behaviors.v:slime_bounce",
-          "abi": "vground.mob_ai.v1"
-        }
-      ]
-    },
-    {
-      "id": "core:forager",
-      "name": "Forager",
-      "glyph": "f",
-      "max_hp": 12,
-      "behavior": "forage_loop",
-      "runtime": "core:native_v",
-      "tick_ms": 130,
-      "tags": ["neutral", "villager"],
-      "hooks": [
-        {
-          "language": "v",
-          "entry": "mods/core/scripts/behaviors.v:forage_loop",
-          "abi": "vground.mob_ai.v1"
-        }
-      ]
-    },
-    {
-      "id": "core:farmer",
-      "name": "Farmer",
-      "glyph": "F",
-      "max_hp": 16,
-      "behavior": "farm_patrol",
-      "runtime": "core:native_v",
-      "tick_ms": 150,
-      "tags": ["neutral", "villager", "farm"],
-      "hooks": [
-        {
-          "language": "v",
-          "entry": "mods/core/scripts/behaviors.v:farm_patrol",
-          "abi": "vground.mob_ai.v1"
-        }
-      ]
-    }
-  ]
-}
+schema = 1
+id = "core"
+name = "VGround Core"
+version = "0.0.1"
+runtime = "v"
+description = "Base blocks, items and mobs for vground."
+
+[[blocks]]
+id = "core:grass"
+name = "Grass"
+glyph = "."
+tags = ["ground", "walkable"]
+
+[[blocks]]
+id = "core:stone"
+name = "Stone"
+glyph = "#"
+solid = true
+tags = ["ground", "mineable"]
+
+[[blocks]]
+id = "core:water"
+name = "Water"
+glyph = "~"
+solid = true
+tags = ["liquid", "blocks_basic_mobs"]
+
+[[blocks]]
+id = "core:tree"
+name = "Tree"
+glyph = "T"
+solid = true
+tags = ["wood", "harvestable"]
+
+[[blocks]]
+id = "core:crop"
+name = "Crop"
+glyph = ","
+tags = ["farm", "harvestable"]
+hooks = [
+  { entry = "scripts/behaviors.v:crop_growth_tick", abi = "vground.block_tick.v1" },
+]
+
+[[items]]
+id = "core:seed"
+name = "Seed"
+glyph = "*"
+tags = ["farm"]
+
+[[items]]
+id = "core:wood"
+name = "Wood"
+glyph = "w"
+tags = ["crafting"]
+
+[[mobs]]
+id = "core:slime"
+name = "Slime"
+glyph = "s"
+max_hp = 8
+behavior = "slime_bounce"
+tick_ms = 90
+tags = ["hostile", "basic"]
+hooks = [
+  { entry = "scripts/behaviors.v:slime_bounce", abi = "vground.mob_ai.v1" },
+]
+
+[[mobs]]
+id = "core:forager"
+name = "Forager"
+glyph = "f"
+max_hp = 12
+behavior = "forage_loop"
+tick_ms = 130
+tags = ["neutral", "villager"]
+hooks = [
+  { entry = "scripts/behaviors.v:forage_loop", abi = "vground.mob_ai.v1" },
+]
+
+[[mobs]]
+id = "core:farmer"
+name = "Farmer"
+glyph = "F"
+max_hp = 16
+behavior = "farm_patrol"
+tick_ms = 150
+tags = ["neutral", "villager", "farm"]
+hooks = [
+  { entry = "scripts/behaviors.v:farm_patrol", abi = "vground.mob_ai.v1" },
+]

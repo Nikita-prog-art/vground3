@@ -26,4 +26,4 @@ Run tests:
 ./v/v test vground
 ```
 
-The core content lives in `mods/core.vgmod`. See `docs/architecture.md` for the current engine shape.
+The core content lives in the TOML manifest `mods/core.vgmod`. See `docs/architecture.md` for the current engine shape.

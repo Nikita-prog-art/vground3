@@ -40,3 +40,10 @@ pub fn forage_loop(input MobBrainInput) MobBrainOutput {
 pub fn farm_patrol(input MobBrainInput) MobBrainOutput {
 	return forage_loop(input)
 }
+
+pub fn crop_growth_tick(age int, moisture int) int {
+	if moisture <= 0 {
+		return age
+	}
+	return age + 1
+}

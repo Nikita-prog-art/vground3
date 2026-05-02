@@ -9,7 +9,7 @@ pub fn run_terminal(mut app GameApp, config AppConfig) ! {
 	println('mods: ${app.registry.mod_ids.join(', ')}')
 	println('scheduler: ${scheduler_summary(config.scheduler)}')
 	println('world access: each chunk owns a mutex; actor steps lock destination chunks')
-	println('runtimes: ${runtime_summary(app.registry)}')
+	println('runtime: ${runtime_summary(app.registry)}')
 	print_world(app.world, []MobView{})
 	if config.scheduler == 'green' {
 		run_terminal_green(mut app, actors, config)
@@ -85,12 +85,12 @@ fn print_world(world &World, mobs []MobView) {
 }
 
 fn runtime_summary(registry Registry) string {
-	if registry.runtimes.len == 0 {
+	if registry.mod_runtimes.len == 0 {
 		return 'none'
 	}
 	mut parts := []string{}
-	for _, runtime in registry.runtimes {
-		parts << '${runtime.id}/${runtime.language}/${runtime.status}'
+	for mod_id, runtime in registry.mod_runtimes {
+		parts << '${mod_id}:${runtime}'
 	}
 	return parts.join(', ')
 }
