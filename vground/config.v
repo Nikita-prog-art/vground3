@@ -9,14 +9,15 @@ pub enum Scheduler {
 
 pub struct AppConfig {
 pub:
-	frontend     string
-	scheduler    Scheduler
-	mod_paths    []string
-	ticks        int
-	tick_ms      int
-	render_every int
-	replay_out   string
-	replay_in    string
+	frontend      string
+	scheduler     Scheduler
+	mod_paths     []string
+	ticks         int
+	tick_ms       int
+	render_every  int
+	replay_out    string
+	replay_in     string
+	replay_verify string
 }
 
 pub fn config_from_args(args []string) !AppConfig {
@@ -28,6 +29,7 @@ pub fn config_from_args(args []string) !AppConfig {
 	mut render_every := 2
 	mut replay_out := ''
 	mut replay_in := ''
+	mut replay_verify := ''
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -106,6 +108,13 @@ pub fn config_from_args(args []string) !AppConfig {
 				}
 				replay_in = args[i]
 			}
+			'--replay-verify' {
+				i++
+				if i >= args.len {
+					return error('--replay-verify expects a path')
+				}
+				replay_verify = args[i]
+			}
 			else {
 				return error('unknown argument `${arg}`\n${help_text()}')
 			}
@@ -125,30 +134,42 @@ pub fn config_from_args(args []string) !AppConfig {
 	if render_every < 1 {
 		return error('--render-every must be >= 1')
 	}
-	if replay_out != '' && replay_in != '' {
-		return error('--replay-out and --replay-in cannot be used together')
+	mut replay_modes := 0
+	if replay_out != '' {
+		replay_modes++
+	}
+	if replay_in != '' {
+		replay_modes++
+	}
+	if replay_verify != '' {
+		replay_modes++
+	}
+	if replay_modes > 1 {
+		return error('--replay-out, --replay-in and --replay-verify cannot be used together')
 	}
 	return AppConfig{
-		frontend:     frontend
-		scheduler:    scheduler
-		mod_paths:    mod_paths
-		ticks:        ticks
-		tick_ms:      tick_ms
-		render_every: render_every
-		replay_out:   replay_out
-		replay_in:    replay_in
+		frontend:      frontend
+		scheduler:     scheduler
+		mod_paths:     mod_paths
+		ticks:         ticks
+		tick_ms:       tick_ms
+		render_every:  render_every
+		replay_out:    replay_out
+		replay_in:     replay_in
+		replay_verify: replay_verify
 	}
 }
 
 pub fn help_text() string {
 	return
-		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|deterministic] [--ticks N] [--tick-ms N] [--mod path] [--replay-out path|--replay-in path]\n' +
+		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|deterministic] [--ticks N] [--tick-ms N] [--mod path] [--replay-out path|--replay-in path|--replay-verify path]\n' +
 		'\n' + 'frontends:\n' + '  terminal  deterministic text renderer and event log\n' +
 		'  gui       placeholder frontend using the shared frame contract\n' + '\n' +
 		'schedulers:\n' + '  go        one V runtime lightweight task per mob\n' +
 		'  deterministic  cooperative mob tasks on the frontend thread\n' + '\n' + 'replay:\n' +
-		'  --replay-out path  write SimEvent stream as NDJSON\n' +
-		'  --replay-in path   render a previously written NDJSON SimEvent stream\n'
+		'  --replay-out path     write SimEvent stream as NDJSON\n' +
+		'  --replay-in path      render a previously written NDJSON SimEvent stream\n' +
+		'  --replay-verify path  verify final snapshot hash without rendering\n'
 }
 
 fn parse_scheduler(value string) !Scheduler {
@@ -161,6 +182,17 @@ fn parse_scheduler(value string) !Scheduler {
 		}
 		else {
 			return error('unknown scheduler `${value}`; expected go or deterministic')
+		}
+	}
+}
+
+pub fn (scheduler Scheduler) name() string {
+	match scheduler {
+		.go {
+			return 'go'
+		}
+		.deterministic {
+			return 'deterministic'
 		}
 	}
 }

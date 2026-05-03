@@ -21,7 +21,11 @@ Frontends start simulation through `start_simulation`. Low-level consumers can r
 
 ## Replay
 
-`--replay-out path` writes the consumed `SimEvent` stream as newline-delimited JSON. `--replay-in path` reads that stream, rebuilds `SimulationFrame` values by applying events to `SimulationState`, and renders those frames through the selected frontend.
+`--replay-out path` writes a replay v1 file as newline-delimited JSON. The first line is a header with schema version, mod ids/versions/runtimes, scheduler settings, render cadence, demo world hash, event count and final snapshot hash. The remaining lines are the consumed `SimEvent` stream.
+
+`--replay-in path` reads that stream, validates v1 metadata when present, rebuilds `SimulationFrame` values by applying events to `SimulationState`, and renders those frames through the selected frontend. Legacy event-only NDJSON files still load, but they do not carry compatibility metadata.
+
+`--replay-verify path` is a non-rendering command mode. It reads a v1 replay, rebuilds the final `SimulationSnapshot`, hashes it, and fails if the hash does not match the header.
 
 Replay stores events, not world chunks. The current demo world is deterministic, so replaying with the same loaded content reproduces snapshots and terminal rendering without rerunning mob AI or scheduler timing.
 
@@ -39,7 +43,7 @@ Definitions can be declarative only, or reference hooks:
 
 The prototype does not dynamically compile or load mod code yet. It validates and exposes the hook metadata so the ABI can be implemented without changing content manifests.
 
-Mob AI already goes through a static `BehaviorRegistry` adapter. For `core`, manifest hook entries such as `scripts/behaviors.v:slime_bounce` map to registered V functions that mirror `mods/core/scripts/behaviors.v`. That keeps hardcoded movement patterns out of the simulation loop while leaving room for real native hook loading later.
+Mob AI already goes through a static `BehaviorRegistry` adapter. Behavior handlers are registered by mod id and runtime; for `core` with `runtime = "v"`, manifest hook entries such as `scripts/behaviors.v:slime_bounce` map to registered V functions that mirror `mods/core/scripts/behaviors.v`. The registry validates hook entries directly. The older `behavior = "..."` field remains as a deprecated fallback when no mob AI hook exists.
 
 ## Concurrency
 

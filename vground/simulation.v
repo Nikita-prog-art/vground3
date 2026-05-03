@@ -127,7 +127,7 @@ pub fn (state &SimulationState) snapshot() SimulationSnapshot {
 }
 
 pub fn start_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) SimulationRun {
-	behavior_registry := new_behavior_registry()
+	behavior_registry := new_behavior_registry_for_registry(registry)
 	match config.scheduler {
 		.go {
 			events := chan SimEvent{cap: 128}
@@ -276,7 +276,7 @@ fn mob_loop(actor MobActor, def MobDef, behavior ResolvedMobBehavior, world &Wor
 }
 
 pub fn run_deterministic_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) []SimEvent {
-	return run_deterministic_simulation_with_behaviors(world, registry, new_behavior_registry(),
+	return run_deterministic_simulation_with_behaviors(world, registry, new_behavior_registry_for_registry(registry),
 		actors, config)
 }
 
