@@ -11,9 +11,11 @@ Frontends are selected with `--frontend`.
 - `terminal`: working deterministic event log and ASCII renderer. This is the debugging frontend.
 - `gui`: reserved slot that currently delegates to `terminal`.
 
-The simulation is independent from the frontend. A GUI renderer can consume the same mob events and world snapshots later.
+The simulation is independent from the frontend. A GUI renderer can consume the same simulation frames and world snapshots later.
 
-Frontends start simulation through `start_simulation`, consume `SimEvent` values through `SimulationRun.next_event`, and apply them to `SimulationState`. `SimulationState` exposes `SimulationSnapshot` values for renderers, so frontends read snapshots instead of owning their own mob-position maps.
+Frontends start simulation through `start_simulation`. Low-level consumers can read `SimEvent` values through `SimulationRun.next_event`; renderers normally use `SimulationRun.next_frame`, which applies each event to `SimulationState` and returns a `SimulationFrame`.
+
+`SimulationFrame` contains the event, the current `SimulationSnapshot`, and a `render_due` flag computed by `RenderCadence`. That keeps render cadence in the simulation/view layer instead of duplicating global-tick logic in every frontend. `SimulationState` exposes snapshots for renderers, so frontends read snapshots instead of owning their own mob-position maps.
 
 ## Mod Model
 

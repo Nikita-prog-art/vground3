@@ -40,6 +40,13 @@ pub:
 	done  int
 }
 
+pub struct SimulationFrame {
+pub:
+	event      SimEvent
+	snapshot   SimulationSnapshot
+	render_due bool
+}
+
 pub struct SimulationState {
 mut:
 	mob_views map[string]MobView
@@ -53,6 +60,12 @@ mut:
 	workers       []thread
 	done          int
 	expected_done int
+}
+
+pub struct RenderCadence {
+	render_every int
+mut:
+	next_render_tick int
 }
 
 struct DeterministicStep {
@@ -142,6 +155,14 @@ pub fn (run &SimulationRun) active_mobs() int {
 	return run.expected_done
 }
 
+pub fn new_render_cadence(render_every int) RenderCadence {
+	normalized := if render_every < 1 { 1 } else { render_every }
+	return RenderCadence{
+		render_every:     normalized
+		next_render_tick: normalized
+	}
+}
+
 pub fn (mut run SimulationRun) next_event() ?SimEvent {
 	if run.done >= run.expected_done {
 		return none
@@ -153,10 +174,41 @@ pub fn (mut run SimulationRun) next_event() ?SimEvent {
 	return event
 }
 
+pub fn (mut run SimulationRun) next_frame(mut state SimulationState, mut cadence RenderCadence) ?SimulationFrame {
+	event := run.next_event() or { return none }
+	state.apply_event(event)
+	snapshot := state.snapshot()
+	render_due := cadence.due(event, snapshot, run.active_mobs())
+	return SimulationFrame{
+		event:      event
+		snapshot:   snapshot
+		render_due: render_due
+	}
+}
+
 pub fn (mut run SimulationRun) wait() {
 	for worker in run.workers {
 		worker.wait()
 	}
+}
+
+pub fn (mut cadence RenderCadence) due(event SimEvent, snapshot SimulationSnapshot, active_mobs int) bool {
+	match event.kind {
+		.moved, .blocked {}
+		else {
+			return false
+		}
+	}
+	if active_mobs == 0 || snapshot.ticks.len < active_mobs {
+		return false
+	}
+	for _, tick in snapshot.ticks {
+		if tick < cadence.next_render_tick {
+			return false
+		}
+	}
+	cadence.next_render_tick += cadence.render_every
+	return true
 }
 
 pub fn demo_mobs(registry Registry) []MobActor {
