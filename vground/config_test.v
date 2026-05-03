@@ -29,3 +29,20 @@ fn test_scheduler_requires_value() {
 		assert err.msg() == '--scheduler expects go or deterministic'
 	}
 }
+
+fn test_replay_paths_parse() {
+	out_config := config_from_args(['--replay-out', '/tmp/out.ndjson'])!
+	in_config := config_from_args(['--replay-in', '/tmp/in.ndjson'])!
+	assert out_config.replay_out == '/tmp/out.ndjson'
+	assert out_config.replay_in == ''
+	assert in_config.replay_in == '/tmp/in.ndjson'
+	assert in_config.replay_out == ''
+}
+
+fn test_replay_in_and_out_are_mutually_exclusive() {
+	if _ := config_from_args(['--replay-out', '/tmp/out.ndjson', '--replay-in', '/tmp/in.ndjson']) {
+		assert false
+	} else {
+		assert err.msg().contains('cannot be used together')
+	}
+}

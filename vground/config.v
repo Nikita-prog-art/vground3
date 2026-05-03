@@ -15,6 +15,8 @@ pub:
 	ticks        int
 	tick_ms      int
 	render_every int
+	replay_out   string
+	replay_in    string
 }
 
 pub fn config_from_args(args []string) !AppConfig {
@@ -24,6 +26,8 @@ pub fn config_from_args(args []string) !AppConfig {
 	mut ticks := 16
 	mut tick_ms := 120
 	mut render_every := 2
+	mut replay_out := ''
+	mut replay_in := ''
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
@@ -88,6 +92,20 @@ pub fn config_from_args(args []string) !AppConfig {
 					return error('invalid --render-every value: ${args[i]}')
 				}
 			}
+			'--replay-out' {
+				i++
+				if i >= args.len {
+					return error('--replay-out expects a path')
+				}
+				replay_out = args[i]
+			}
+			'--replay-in' {
+				i++
+				if i >= args.len {
+					return error('--replay-in expects a path')
+				}
+				replay_in = args[i]
+			}
 			else {
 				return error('unknown argument `${arg}`\n${help_text()}')
 			}
@@ -107,6 +125,9 @@ pub fn config_from_args(args []string) !AppConfig {
 	if render_every < 1 {
 		return error('--render-every must be >= 1')
 	}
+	if replay_out != '' && replay_in != '' {
+		return error('--replay-out and --replay-in cannot be used together')
+	}
 	return AppConfig{
 		frontend:     frontend
 		scheduler:    scheduler
@@ -114,16 +135,20 @@ pub fn config_from_args(args []string) !AppConfig {
 		ticks:        ticks
 		tick_ms:      tick_ms
 		render_every: render_every
+		replay_out:   replay_out
+		replay_in:    replay_in
 	}
 }
 
 pub fn help_text() string {
 	return
-		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|deterministic] [--ticks N] [--tick-ms N] [--mod path]\n' +
+		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|deterministic] [--ticks N] [--tick-ms N] [--mod path] [--replay-out path|--replay-in path]\n' +
 		'\n' + 'frontends:\n' + '  terminal  deterministic text renderer and event log\n' +
-		'  gui       placeholder frontend that currently reuses terminal simulation\n' + '\n' +
+		'  gui       placeholder frontend using the shared frame contract\n' + '\n' +
 		'schedulers:\n' + '  go        one V runtime lightweight task per mob\n' +
-		'  deterministic  cooperative mob tasks on the frontend thread\n'
+		'  deterministic  cooperative mob tasks on the frontend thread\n' + '\n' + 'replay:\n' +
+		'  --replay-out path  write SimEvent stream as NDJSON\n' +
+		'  --replay-in path   render a previously written NDJSON SimEvent stream\n'
 }
 
 fn parse_scheduler(value string) !Scheduler {

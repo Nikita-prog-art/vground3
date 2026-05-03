@@ -9,13 +9,21 @@ The current executable is `cmd/vground`. It loads `mods/core.vgmod`, builds a re
 Frontends are selected with `--frontend`.
 
 - `terminal`: working deterministic event log and ASCII renderer. This is the debugging frontend.
-- `gui`: reserved slot that currently delegates to `terminal`.
+- `gui`: reserved slot that currently reuses the terminal renderer through the shared frame-consumer contract.
 
 The simulation is independent from the frontend. A GUI renderer can consume the same simulation frames and world snapshots later.
 
 Frontends start simulation through `start_simulation`. Low-level consumers can read `SimEvent` values through `SimulationRun.next_event`; renderers normally use `SimulationRun.next_frame`, which applies each event to `SimulationState` and returns a `SimulationFrame`.
 
 `SimulationFrame` contains the event, the current `SimulationSnapshot`, and a `render_due` flag computed by `RenderCadence`. That keeps render cadence in the simulation/view layer instead of duplicating global-tick logic in every frontend. `SimulationState` exposes snapshots for renderers, so frontends read snapshots instead of owning their own mob-position maps.
+
+`run_frame_frontend` is the common frontend runner. It starts a live simulation or reads a replay, then feeds `SimulationFrame` values into a `SimulationFrameConsumer`. Frontends implement `begin`, `consume` and `finish`; scheduler details and replay plumbing stay outside renderer code.
+
+## Replay
+
+`--replay-out path` writes the consumed `SimEvent` stream as newline-delimited JSON. `--replay-in path` reads that stream, rebuilds `SimulationFrame` values by applying events to `SimulationState`, and renders those frames through the selected frontend.
+
+Replay stores events, not world chunks. The current demo world is deterministic, so replaying with the same loaded content reproduces snapshots and terminal rendering without rerunning mob AI or scheduler timing.
 
 ## Mod Model
 
@@ -30,6 +38,8 @@ Definitions can be declarative only, or reference hooks:
 - Future mods can use other runtime names such as `c`, `lua` or `jvm`; the registry treats runtime as a per-mod contract.
 
 The prototype does not dynamically compile or load mod code yet. It validates and exposes the hook metadata so the ABI can be implemented without changing content manifests.
+
+Mob AI already goes through a static `BehaviorRegistry` adapter. For `core`, manifest hook entries such as `scripts/behaviors.v:slime_bounce` map to registered V functions that mirror `mods/core/scripts/behaviors.v`. That keeps hardcoded movement patterns out of the simulation loop while leaving room for real native hook loading later.
 
 ## Concurrency
 

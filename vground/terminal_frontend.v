@@ -1,27 +1,34 @@
 module vground
 
 pub fn run_terminal(mut app GameApp, config AppConfig) ! {
-	actors := demo_mobs(app.registry)
-	if actors.len == 0 {
-		return error('no demo mobs are available in loaded mods')
-	}
-	app.world.place_mobs(actors)!
+	mut consumer := TerminalFrameConsumer{}
+	run_frame_frontend(mut app, config, mut consumer)!
+}
+
+struct TerminalFrameConsumer {}
+
+fn (mut consumer TerminalFrameConsumer) begin(world &World, registry Registry, config AppConfig) ! {
 	println('vground3 terminal frontend')
-	println('mods: ${app.registry.mod_ids.join(', ')}')
+	println('mods: ${registry.mod_ids.join(', ')}')
 	println('scheduler: ${scheduler_summary(config.scheduler)}')
-	println('world access: each chunk owns a mutex; actor steps lock occupied chunks')
-	println('runtime: ${runtime_summary(app.registry)}')
-	print_world(app.world, []MobView{})
-	mut run := start_simulation(app.world, app.registry, actors, config)
-	mut simulation := new_simulation_state()
-	mut cadence := new_render_cadence(config.render_every)
-	for {
-		frame := run.next_frame(mut simulation, mut cadence) or { break }
-		handle_terminal_frame(frame, app.world)
+	if config.replay_in != '' {
+		println('replay: ${config.replay_in}')
 	}
-	run.wait()
+	if config.replay_out != '' {
+		println('replay out: ${config.replay_out}')
+	}
+	println('world access: each chunk owns a mutex; actor steps lock occupied chunks')
+	println('runtime: ${runtime_summary(registry)}')
+	print_world(world, []MobView{})
+}
+
+fn (mut consumer TerminalFrameConsumer) consume(frame SimulationFrame, world &World) ! {
+	handle_terminal_frame(frame, world)
+}
+
+fn (mut consumer TerminalFrameConsumer) finish(snapshot SimulationSnapshot, world &World) ! {
 	println('simulation complete')
-	print_snapshot(app.world, simulation.snapshot())
+	print_snapshot(world, snapshot)
 }
 
 fn handle_terminal_frame(frame SimulationFrame, world &World) {

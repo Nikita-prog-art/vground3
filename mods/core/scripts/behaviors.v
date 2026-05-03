@@ -1,7 +1,7 @@
 module core_behaviors
 
 // Placeholder V-side mod script. The current prototype reads the manifest and
-// runs built-in behavior names; this file documents the future native V hook.
+// dispatches these hook entries through a static BehaviorRegistry adapter.
 
 pub struct MobBrainInput {
 pub:

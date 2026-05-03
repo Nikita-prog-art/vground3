@@ -127,10 +127,12 @@ pub fn (state &SimulationState) snapshot() SimulationSnapshot {
 }
 
 pub fn start_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) SimulationRun {
+	behavior_registry := new_behavior_registry()
 	match config.scheduler {
 		.go {
 			events := chan SimEvent{cap: 128}
-			workers := start_mob_threads(world, registry, actors, events, config)
+			workers := start_mob_threads(world, registry, behavior_registry, actors, events,
+				config)
 			return SimulationRun{
 				events:        events
 				workers:       workers
@@ -138,7 +140,8 @@ pub fn start_simulation(world &World, registry Registry, actors []MobActor, conf
 			}
 		}
 		.deterministic {
-			sim_events := run_deterministic_simulation(world, registry, actors, config)
+			sim_events := run_deterministic_simulation_with_behaviors(world, registry,
+				behavior_registry, actors, config)
 			events := chan SimEvent{cap: sim_events.len}
 			for event in sim_events {
 				events <- event
@@ -236,16 +239,17 @@ pub fn demo_mobs(registry Registry) []MobActor {
 	return actors
 }
 
-fn start_mob_threads(world &World, registry Registry, actors []MobActor, events chan SimEvent, config AppConfig) []thread {
+fn start_mob_threads(world &World, registry Registry, behavior_registry BehaviorRegistry, actors []MobActor, events chan SimEvent, config AppConfig) []thread {
 	mut threads := []thread{cap: actors.len}
 	for actor in actors {
 		def := registry.mobs[actor.def_id] or { continue }
-		threads << go mob_loop(actor, def, world, events, config.ticks, config.tick_ms)
+		behavior := behavior_registry.resolve_mob(def)
+		threads << go mob_loop(actor, def, behavior, world, events, config.ticks, config.tick_ms)
 	}
 	return threads
 }
 
-fn mob_loop(actor MobActor, def MobDef, world &World, events chan SimEvent, ticks int, default_tick_ms int) {
+fn mob_loop(actor MobActor, def MobDef, behavior ResolvedMobBehavior, world &World, events chan SimEvent, ticks int, default_tick_ms int) {
 	mut state := actor
 	events <- SimEvent{
 		kind:     .spawned
@@ -255,7 +259,7 @@ fn mob_loop(actor MobActor, def MobDef, world &World, events chan SimEvent, tick
 		to:       state.pos
 	}
 	for tick in 1 .. ticks + 1 {
-		events <- step_actor(mut state, def, world, tick)
+		events <- step_actor(mut state, def, behavior, world, tick)
 		sleep_ms := actor_tick_ms(def, default_tick_ms)
 		if sleep_ms > 0 {
 			time.sleep(sleep_ms * time.millisecond)
@@ -272,6 +276,11 @@ fn mob_loop(actor MobActor, def MobDef, world &World, events chan SimEvent, tick
 }
 
 pub fn run_deterministic_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) []SimEvent {
+	return run_deterministic_simulation_with_behaviors(world, registry, new_behavior_registry(),
+		actors, config)
+}
+
+fn run_deterministic_simulation_with_behaviors(world &World, registry Registry, behavior_registry BehaviorRegistry, actors []MobActor, config AppConfig) []SimEvent {
 	mut states := actors.clone()
 	mut events := []SimEvent{cap: actors.len * (config.ticks + 2)}
 	for state in states {
@@ -298,8 +307,9 @@ pub fn run_deterministic_simulation(world &World, registry Registry, actors []Mo
 	steps.sort_with_compare(compare_deterministic_steps)
 	for step in steps {
 		def := registry.mobs[states[step.actor_idx].def_id] or { continue }
+		behavior := behavior_registry.resolve_mob(def)
 		mut state := states[step.actor_idx]
-		events << step_actor(mut state, def, world, step.tick)
+		events << step_actor(mut state, def, behavior, world, step.tick)
 		states[step.actor_idx] = state
 	}
 	for state in states {
@@ -341,11 +351,23 @@ fn compare_deterministic_steps(a &DeterministicStep, b &DeterministicStep) int {
 	return 0
 }
 
-fn step_actor(mut state MobActor, def MobDef, world &World, tick int) SimEvent {
-	dir := direction_for(def.behavior, state.id, tick)
+fn step_actor(mut state MobActor, def MobDef, behavior ResolvedMobBehavior, world &World, tick int) SimEvent {
+	old_pos := state.pos
+	if !behavior.found() {
+		return SimEvent{
+			kind:     .blocked
+			mob_id:   state.id
+			mob_name: state.name
+			glyph:    state.glyph
+			tick:     tick
+			from:     old_pos
+			to:       old_pos
+			reason:   'missing mob AI behavior for ${def.id}'
+		}
+	}
+	dir := behavior.direction(state, tick)
 	target := state.pos.add(dir)
 	result := world.try_mob_step(state.id, state.pos, target)
-	old_pos := state.pos
 	if result.ok {
 		state = MobActor{
 			...state
@@ -375,55 +397,4 @@ fn step_actor(mut state MobActor, def MobDef, world &World, tick int) SimEvent {
 		chunk:    result.chunk
 		visits:   result.visits
 	}
-}
-
-fn direction_for(behavior string, id string, tick int) Vec2 {
-	match behavior {
-		'slime_bounce' {
-			pattern := [
-				Vec2{1, 0},
-				Vec2{0, 1},
-				Vec2{-1, 0},
-				Vec2{0, -1},
-			]
-			return pattern[(tick + stable_hash(id)) % pattern.len]
-		}
-		'forage_loop' {
-			pattern := [
-				Vec2{0, -1},
-				Vec2{1, 0},
-				Vec2{1, 0},
-				Vec2{0, 1},
-				Vec2{-1, 0},
-				Vec2{-1, 0},
-			]
-			return pattern[(tick + stable_hash(id)) % pattern.len]
-		}
-		'farm_patrol' {
-			pattern := [
-				Vec2{1, 0},
-				Vec2{0, 1},
-				Vec2{-1, 0},
-				Vec2{0, -1},
-			]
-			return pattern[tick % pattern.len]
-		}
-		else {
-			pattern := [
-				Vec2{1, 0},
-				Vec2{0, 1},
-				Vec2{-1, 0},
-				Vec2{0, -1},
-			]
-			return pattern[(tick + stable_hash(id)) % pattern.len]
-		}
-	}
-}
-
-fn stable_hash(text string) int {
-	mut h := 0
-	for b in text.bytes() {
-		h += int(b)
-	}
-	return h
 }

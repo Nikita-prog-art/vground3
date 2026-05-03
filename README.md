@@ -14,6 +14,13 @@ Run the deterministic scheduler:
 ./v/v run cmd/vground -- --scheduler deterministic --ticks 12
 ```
 
+Write and replay an event stream:
+
+```sh
+./v/v run cmd/vground -- --scheduler deterministic --ticks 4 --replay-out /tmp/vground.ndjson
+./v/v run cmd/vground -- --replay-in /tmp/vground.ndjson
+```
+
 Run tests:
 
 ```sh
