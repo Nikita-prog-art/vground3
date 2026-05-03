@@ -1,6 +1,7 @@
 module vground
 
 import os
+import toml
 
 fn test_core_mod_loads_and_registers_content() {
 	path := os.join_path(@VMODROOT, 'mods', 'core.vgmod')
@@ -82,5 +83,27 @@ fn test_hook_entries_are_relative_to_mod_dir() {
 		assert false
 	} else {
 		assert err.msg().contains('must be relative to mods/core')
+	}
+}
+
+fn test_mod_sections_are_optional() {
+	doc := toml.parse_text('schema = 1\n' + 'id = "items_only"\n' + 'name = "Items Only"\n' +
+		'version = "0.0.1"\n' + 'runtime = "v"\n' + '\n' + '[[items]]\n' +
+		'id = "items_only:seed"\n' + 'name = "Seed"\n' + 'glyph = "*"\n')!
+	mod := parse_mod_doc(doc)!
+	assert mod.blocks.len == 0
+	assert mod.items.len == 1
+	assert mod.mobs.len == 0
+}
+
+fn test_hook_entries_must_be_tables() {
+	doc := toml.parse_text('schema = 1\n' + 'id = "bad_hooks"\n' + 'name = "Bad Hooks"\n' +
+		'version = "0.0.1"\n' + 'runtime = "v"\n' + '\n' + '[[mobs]]\n' +
+		'id = "bad_hooks:slime"\n' + 'name = "Slime"\n' + 'glyph = "s"\n' +
+		'hooks = ["not a table"]\n')!
+	if _ := parse_mod_doc(doc) {
+		assert false
+	} else {
+		assert err.msg().contains('hooks: expected table entry')
 	}
 }

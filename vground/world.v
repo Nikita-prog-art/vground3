@@ -1,5 +1,6 @@
 module vground
 
+import strings
 import sync
 
 pub struct BlockCell {
@@ -15,8 +16,9 @@ pub struct Chunk {
 pub:
 	pos ChunkPos
 pub mut:
-	mu    &sync.Mutex = unsafe { nil }
-	cells []BlockCell
+	mu        &sync.Mutex = unsafe { nil }
+	cells     []BlockCell
+	occupants []string
 }
 
 pub struct World {
@@ -83,12 +85,13 @@ fn new_chunk(cx int, cy int, chunk_size int, registry Registry) !&Chunk {
 		}
 	}
 	return &Chunk{
-		pos:   ChunkPos{
+		pos:       ChunkPos{
 			x: cx
 			y: cy
 		}
-		mu:    sync.new_mutex()
-		cells: cells
+		mu:        sync.new_mutex()
+		cells:     cells
+		occupants: []string{len: chunk_size * chunk_size}
 	}
 }
 
@@ -123,6 +126,53 @@ pub fn (w &World) in_bounds(p Vec2) bool {
 }
 
 pub fn (w &World) try_step(from Vec2, to Vec2) StepResult {
+	return w.try_block_step(from, to)
+}
+
+pub fn (w &World) place_mobs(actors []MobActor) ! {
+	for actor in actors {
+		w.place_mob(actor.id, actor.pos)!
+	}
+}
+
+pub fn (w &World) place_mob(mob_id string, pos Vec2) ! {
+	if mob_id == '' {
+		return error('mob id is required')
+	}
+	if !w.in_bounds(pos) {
+		return error('${mob_id}: spawn ${pos} is outside the world')
+	}
+	mut chunk := w.chunk_for_world(pos) or {
+		return error('${mob_id}: spawn ${pos} references a missing chunk')
+	}
+	idx := w.cell_index(pos)
+	chunk.mu.lock()
+	defer {
+		chunk.mu.unlock()
+	}
+	cell := chunk.cells[idx]
+	if cell.solid {
+		return error('${mob_id}: spawn ${pos} blocked by ${cell.block_id}')
+	}
+	occupant := chunk.occupants[idx]
+	if occupant != '' && occupant != mob_id {
+		return error('${mob_id}: spawn ${pos} occupied by ${occupant}')
+	}
+	chunk.occupants[idx] = mob_id
+}
+
+pub fn (w &World) try_mob_step(mob_id string, from Vec2, to Vec2) StepResult {
+	if mob_id == '' {
+		return w.try_step(from, to)
+	}
+	if !w.in_bounds(from) {
+		return StepResult{
+			ok:     false
+			from:   from
+			to:     to
+			reason: 'mob position outside world'
+		}
+	}
 	if !w.in_bounds(to) {
 		return StepResult{
 			ok:     false
@@ -131,7 +181,15 @@ pub fn (w &World) try_step(from Vec2, to Vec2) StepResult {
 			reason: 'world edge'
 		}
 	}
-	mut chunk := w.chunk_for_world(to) or {
+	mut from_chunk := w.chunk_for_world(from) or {
+		return StepResult{
+			ok:     false
+			from:   from
+			to:     to
+			reason: 'missing source chunk'
+		}
+	}
+	mut to_chunk := w.chunk_for_world(to) or {
 		return StepResult{
 			ok:     false
 			from:   from
@@ -139,32 +197,34 @@ pub fn (w &World) try_step(from Vec2, to Vec2) StepResult {
 			reason: 'missing chunk'
 		}
 	}
-	local := w.local_pos(to)
-	idx := local.y * w.chunk_size + local.x
-	chunk.mu.lock()
-	cell := chunk.cells[idx]
-	if cell.solid {
-		chunk.mu.unlock()
-		return StepResult{
-			ok:       false
-			from:     from
-			to:       to
-			block_id: cell.block_id
-			reason:   'blocked by ${cell.block_id}'
-			chunk:    chunk.pos
-			visits:   cell.visits
+	if from_chunk.pos.x == to_chunk.pos.x && from_chunk.pos.y == to_chunk.pos.y {
+		to_chunk.mu.lock()
+		defer {
+			to_chunk.mu.unlock()
 		}
+		return w.try_step_with_locked_chunks(mut from_chunk, mut to_chunk, mob_id, from,
+			to)
 	}
-	chunk.cells[idx].visits++
-	visits := chunk.cells[idx].visits
-	chunk.mu.unlock()
-	return StepResult{
-		ok:       true
-		from:     from
-		to:       to
-		block_id: cell.block_id
-		chunk:    chunk.pos
-		visits:   visits
+	from_key := w.chunk_order(from_chunk.pos)
+	to_key := w.chunk_order(to_chunk.pos)
+	if from_key < to_key {
+		from_chunk.mu.lock()
+		to_chunk.mu.lock()
+		defer {
+			to_chunk.mu.unlock()
+			from_chunk.mu.unlock()
+		}
+		return w.try_step_with_locked_chunks(mut from_chunk, mut to_chunk, mob_id, from,
+			to)
+	} else {
+		to_chunk.mu.lock()
+		from_chunk.mu.lock()
+		defer {
+			from_chunk.mu.unlock()
+			to_chunk.mu.unlock()
+		}
+		return w.try_step_with_locked_chunks(mut from_chunk, mut to_chunk, mob_id, from,
+			to)
 	}
 }
 
@@ -181,6 +241,117 @@ fn (w &World) local_pos(p Vec2) Vec2 {
 	}
 }
 
+fn (w &World) cell_index(p Vec2) int {
+	local := w.local_pos(p)
+	return local.y * w.chunk_size + local.x
+}
+
+fn (w &World) chunk_order(pos ChunkPos) int {
+	return pos.y * w.width_chunks + pos.x
+}
+
+fn (w &World) try_block_step(from Vec2, to Vec2) StepResult {
+	if !w.in_bounds(to) {
+		return StepResult{
+			ok:     false
+			from:   from
+			to:     to
+			reason: 'world edge'
+		}
+	}
+	mut chunk := w.chunk_for_world(to) or {
+		return StepResult{
+			ok:     false
+			from:   from
+			to:     to
+			reason: 'missing chunk'
+		}
+	}
+	idx := w.cell_index(to)
+	chunk.mu.lock()
+	defer {
+		chunk.mu.unlock()
+	}
+	cell := chunk.cells[idx]
+	if cell.solid {
+		return StepResult{
+			ok:       false
+			from:     from
+			to:       to
+			block_id: cell.block_id
+			reason:   'blocked by ${cell.block_id}'
+			chunk:    chunk.pos
+			visits:   cell.visits
+		}
+	}
+	chunk.cells[idx].visits++
+	visits := chunk.cells[idx].visits
+	return StepResult{
+		ok:       true
+		from:     from
+		to:       to
+		block_id: cell.block_id
+		chunk:    chunk.pos
+		visits:   visits
+	}
+}
+
+fn (w &World) try_step_with_locked_chunks(mut from_chunk Chunk, mut to_chunk Chunk, mob_id string, from Vec2, to Vec2) StepResult {
+	from_idx := w.cell_index(from)
+	to_idx := w.cell_index(to)
+	cell := to_chunk.cells[to_idx]
+	if cell.solid {
+		return StepResult{
+			ok:       false
+			from:     from
+			to:       to
+			block_id: cell.block_id
+			reason:   'blocked by ${cell.block_id}'
+			chunk:    to_chunk.pos
+			visits:   cell.visits
+		}
+	}
+	source_occupant := from_chunk.occupants[from_idx]
+	if source_occupant != mob_id {
+		reason := if source_occupant == '' {
+			'mob ${mob_id} is not at ${from}'
+		} else {
+			'${from} occupied by ${source_occupant}'
+		}
+		return StepResult{
+			ok:     false
+			from:   from
+			to:     to
+			reason: reason
+			chunk:  from_chunk.pos
+		}
+	}
+	target_occupant := to_chunk.occupants[to_idx]
+	if target_occupant != '' && target_occupant != mob_id {
+		return StepResult{
+			ok:       false
+			from:     from
+			to:       to
+			block_id: cell.block_id
+			reason:   'occupied by ${target_occupant}'
+			chunk:    to_chunk.pos
+			visits:   cell.visits
+		}
+	}
+	from_chunk.occupants[from_idx] = ''
+	to_chunk.occupants[to_idx] = mob_id
+	to_chunk.cells[to_idx].visits++
+	visits := to_chunk.cells[to_idx].visits
+	return StepResult{
+		ok:       true
+		from:     from
+		to:       to
+		block_id: cell.block_id
+		chunk:    to_chunk.pos
+		visits:   visits
+	}
+}
+
 pub fn (w &World) render(mobs []MobView) []string {
 	size := w.world_size()
 	mut mob_glyphs := map[string]string{}
@@ -189,22 +360,22 @@ pub fn (w &World) render(mobs []MobView) []string {
 	}
 	mut lines := []string{cap: size.y}
 	for y in 0 .. size.y {
-		mut line := ''
+		mut line := strings.new_builder(size.x)
 		for x in 0 .. size.x {
 			key := pos_key(Vec2{
 				x: x
 				y: y
 			})
 			if glyph := mob_glyphs[key] {
-				line += glyph
+				line.write_string(glyph)
 			} else {
-				line += w.block_glyph(Vec2{
+				line.write_string(w.block_glyph(Vec2{
 					x: x
 					y: y
-				})
+				}))
 			}
 		}
-		lines << line
+		lines << line.str()
 	}
 	return lines
 }

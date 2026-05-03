@@ -2,7 +2,7 @@
 
 VGround is a small V prototype for a Minecraft/Zelda/Stardew-like game.
 
-The current executable is `cmd/vground`. It loads `mods/core.vgmod`, builds a registry, creates a chunked demo world, then runs mobs in separate V runtime tasks.
+The current executable is `cmd/vground`. It loads `mods/core.vgmod`, builds a registry, creates a chunked demo world, then runs mobs through the selected scheduler.
 
 ## Frontends
 
@@ -12,6 +12,8 @@ Frontends are selected with `--frontend`.
 - `gui`: reserved slot that currently delegates to `terminal`.
 
 The simulation is independent from the frontend. A GUI renderer can consume the same mob events and world snapshots later.
+
+Simulation events are applied to `SimulationState`, which exposes `SimulationSnapshot` values for renderers. Frontends should read snapshots instead of owning their own mob-position maps.
 
 ## Mod Model
 
@@ -32,15 +34,14 @@ The prototype does not dynamically compile or load mod code yet. It validates an
 The scheduler is selected with `--scheduler`. The default is `go`, following V's current concurrency docs.
 
 - `go`: each mob runs in its own lightweight V runtime task through `go`.
-- `spawn`: each mob runs in its own OS thread through `spawn`.
-- `green`: mobs are stepped as cooperative tasks on the frontend thread. This is useful for deterministic debugging and leaves room for a real fiber runtime later.
+- `deterministic`: mobs are stepped as cooperative tasks on the frontend thread. This is useful for reproducible debugging and leaves room for a real fiber runtime later.
 
-The world is split into fixed-size chunks. Every chunk owns a `sync.Mutex`. Mob logic calls `World.try_step`, which locks the destination chunk, reads the target block and updates per-cell visit counters before unlocking.
+The world is split into fixed-size chunks. Every chunk owns a `sync.Mutex`. Mob logic calls `World.try_mob_step`, which locks the source and destination chunks in deterministic order, checks block solidity and mob occupancy, moves the occupant id, and updates per-cell visit counters before unlocking.
 
 This is intentionally conservative. It gives a clear place to evolve toward:
 
 - chunk-level jobs
 - actor mailboxes
-- green-thread scheduling
+- deterministic scheduling
 - native FFI hooks
 - sandboxed external runtime adapters

@@ -33,6 +33,78 @@ pub:
 	visits   int
 }
 
+pub struct SimulationSnapshot {
+pub:
+	mobs  []MobView
+	ticks map[string]int
+	done  int
+}
+
+pub struct SimulationState {
+mut:
+	mob_views map[string]MobView
+	mob_ticks map[string]int
+	done      int
+}
+
+struct DeterministicStep {
+	actor_idx int
+	tick      int
+	due_ms    int
+}
+
+pub fn new_simulation_state() SimulationState {
+	return SimulationState{
+		mob_views: map[string]MobView{}
+		mob_ticks: map[string]int{}
+	}
+}
+
+pub fn (mut state SimulationState) apply_event(event SimEvent) {
+	match event.kind {
+		.spawned {
+			state.mob_views[event.mob_id] = MobView{
+				id:    event.mob_id
+				name:  event.mob_name
+				glyph: event.glyph
+				pos:   event.to
+			}
+			state.mob_ticks[event.mob_id] = 0
+		}
+		.moved {
+			state.mob_views[event.mob_id] = MobView{
+				id:    event.mob_id
+				name:  event.mob_name
+				glyph: event.glyph
+				pos:   event.to
+			}
+			state.mob_ticks[event.mob_id] = event.tick
+		}
+		.blocked {
+			state.mob_ticks[event.mob_id] = event.tick
+		}
+		.done {
+			if event.mob_id in state.mob_views {
+				state.mob_views[event.mob_id] = MobView{
+					id:    event.mob_id
+					name:  event.mob_name
+					glyph: event.glyph
+					pos:   event.to
+				}
+			}
+			state.done++
+		}
+	}
+}
+
+pub fn (state &SimulationState) snapshot() SimulationSnapshot {
+	return SimulationSnapshot{
+		mobs:  state.mob_views.values()
+		ticks: state.mob_ticks.clone()
+		done:  state.done
+	}
+}
+
 pub fn demo_mobs(registry Registry) []MobActor {
 	candidates := [
 		['core:slime', '1', '3', '3'],
@@ -62,14 +134,7 @@ pub fn start_mob_threads(world &World, registry Registry, actors []MobActor, eve
 	mut threads := []thread{cap: actors.len}
 	for actor in actors {
 		def := registry.mobs[actor.def_id] or { continue }
-		match config.scheduler {
-			'spawn' {
-				threads << spawn mob_loop(actor, def, world, events, config.ticks, config.tick_ms)
-			}
-			else {
-				threads << go mob_loop(actor, def, world, events, config.ticks, config.tick_ms)
-			}
-		}
+		threads << go mob_loop(actor, def, world, events, config.ticks, config.tick_ms)
 	}
 	return threads
 }
@@ -85,7 +150,7 @@ fn mob_loop(actor MobActor, def MobDef, world &World, events chan SimEvent, tick
 	}
 	for tick in 1 .. ticks + 1 {
 		events <- step_actor(mut state, def, world, tick)
-		sleep_ms := if def.tick_ms > 0 { def.tick_ms } else { default_tick_ms }
+		sleep_ms := actor_tick_ms(def, default_tick_ms)
 		if sleep_ms > 0 {
 			time.sleep(sleep_ms * time.millisecond)
 		}
@@ -100,7 +165,7 @@ fn mob_loop(actor MobActor, def MobDef, world &World, events chan SimEvent, tick
 	}
 }
 
-pub fn run_green_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) []SimEvent {
+pub fn run_deterministic_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) []SimEvent {
 	mut states := actors.clone()
 	mut events := []SimEvent{cap: actors.len * (config.ticks + 2)}
 	for state in states {
@@ -112,13 +177,24 @@ pub fn run_green_simulation(world &World, registry Registry, actors []MobActor, 
 			to:       state.pos
 		}
 	}
-	for tick in 1 .. config.ticks + 1 {
-		for idx in 0 .. states.len {
-			def := registry.mobs[states[idx].def_id] or { continue }
-			mut state := states[idx]
-			events << step_actor(mut state, def, world, tick)
-			states[idx] = state
+	mut steps := []DeterministicStep{cap: states.len * config.ticks}
+	for idx, state in states {
+		def := registry.mobs[state.def_id] or { continue }
+		interval_ms := actor_tick_ms(def, config.tick_ms)
+		for tick in 1 .. config.ticks + 1 {
+			steps << DeterministicStep{
+				actor_idx: idx
+				tick:      tick
+				due_ms:    (tick - 1) * interval_ms
+			}
 		}
+	}
+	steps.sort_with_compare(compare_deterministic_steps)
+	for step in steps {
+		def := registry.mobs[states[step.actor_idx].def_id] or { continue }
+		mut state := states[step.actor_idx]
+		events << step_actor(mut state, def, world, step.tick)
+		states[step.actor_idx] = state
 	}
 	for state in states {
 		events << SimEvent{
@@ -133,10 +209,36 @@ pub fn run_green_simulation(world &World, registry Registry, actors []MobActor, 
 	return events
 }
 
+fn actor_tick_ms(def MobDef, default_tick_ms int) int {
+	return if def.tick_ms > 0 { def.tick_ms } else { default_tick_ms }
+}
+
+fn compare_deterministic_steps(a &DeterministicStep, b &DeterministicStep) int {
+	if a.due_ms < b.due_ms {
+		return -1
+	}
+	if a.due_ms > b.due_ms {
+		return 1
+	}
+	if a.tick < b.tick {
+		return -1
+	}
+	if a.tick > b.tick {
+		return 1
+	}
+	if a.actor_idx < b.actor_idx {
+		return -1
+	}
+	if a.actor_idx > b.actor_idx {
+		return 1
+	}
+	return 0
+}
+
 fn step_actor(mut state MobActor, def MobDef, world &World, tick int) SimEvent {
 	dir := direction_for(def.behavior, state.id, tick)
 	target := state.pos.add(dir)
-	result := world.try_step(state.pos, target)
+	result := world.try_mob_step(state.id, state.pos, target)
 	old_pos := state.pos
 	if result.ok {
 		state = MobActor{
@@ -174,9 +276,7 @@ fn direction_for(behavior string, id string, tick int) Vec2 {
 		'slime_bounce' {
 			pattern := [
 				Vec2{1, 0},
-				Vec2{1, 0},
 				Vec2{0, 1},
-				Vec2{-1, 0},
 				Vec2{-1, 0},
 				Vec2{0, -1},
 			]

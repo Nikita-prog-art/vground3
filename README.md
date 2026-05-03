@@ -8,16 +8,10 @@ Run the terminal frontend:
 ./v/v run cmd/vground -- --frontend terminal --ticks 12
 ```
 
-Run the cooperative green-task scheduler:
+Run the deterministic scheduler:
 
 ```sh
-./v/v run cmd/vground -- --scheduler green --ticks 12
-```
-
-Run OS-thread actors for comparison:
-
-```sh
-./v/v run cmd/vground -- --scheduler spawn --ticks 12
+./v/v run cmd/vground -- --scheduler deterministic --ticks 12
 ```
 
 Run tests:

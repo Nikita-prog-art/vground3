@@ -36,3 +36,34 @@ fn test_solid_blocks_reject_steps() {
 	assert !result.ok
 	assert result.block_id == 'core:water'
 }
+
+fn test_mobs_block_each_other() {
+	core := load_mod(os.join_path(@VMODROOT, 'mods', 'core.vgmod'))!
+	registry := build_registry([core])!
+	world := new_demo_world(registry)!
+	world.place_mobs([
+		MobActor{
+			id:  'mob:a'
+			pos: Vec2{
+				x: 2
+				y: 2
+			}
+		},
+		MobActor{
+			id:  'mob:b'
+			pos: Vec2{
+				x: 3
+				y: 2
+			}
+		},
+	])!
+	result := world.try_mob_step('mob:a', Vec2{
+		x: 2
+		y: 2
+	}, Vec2{
+		x: 3
+		y: 2
+	})
+	assert !result.ok
+	assert result.reason == 'occupied by mob:b'
+}

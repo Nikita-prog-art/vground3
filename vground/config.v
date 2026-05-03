@@ -38,7 +38,7 @@ pub fn config_from_args(args []string) !AppConfig {
 			'--scheduler', '-s' {
 				i++
 				if i >= args.len {
-					return error('--scheduler expects go, spawn or green')
+					return error('--scheduler expects go or deterministic')
 				}
 				scheduler = args[i]
 			}
@@ -114,24 +114,20 @@ pub fn config_from_args(args []string) !AppConfig {
 
 pub fn help_text() string {
 	return
-		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|spawn|green] [--ticks N] [--tick-ms N] [--mod path]\n' +
+		'usage: ./v/v run cmd/vground -- [--frontend terminal|gui] [--scheduler go|deterministic] [--ticks N] [--tick-ms N] [--mod path]\n' +
 		'\n' + 'frontends:\n' + '  terminal  deterministic text renderer and event log\n' +
 		'  gui       placeholder frontend that currently reuses terminal simulation\n' + '\n' +
 		'schedulers:\n' + '  go        one V runtime lightweight task per mob\n' +
-		'  spawn     one OS thread per mob\n' +
-		'  green     cooperative mob tasks on the frontend thread\n'
+		'  deterministic  cooperative mob tasks on the frontend thread\n'
 }
 
 fn normalize_scheduler(value string) !string {
 	match value {
-		'go', 'spawn', 'green' {
+		'go', 'deterministic' {
 			return value
 		}
-		'native' {
-			return 'spawn'
-		}
 		else {
-			return error('unknown scheduler `${value}`; expected go, spawn or green')
+			return error('unknown scheduler `${value}`; expected go or deterministic')
 		}
 	}
 }

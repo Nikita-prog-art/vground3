@@ -70,7 +70,15 @@ pub fn load_mod(path string) !VgMod {
 }
 
 fn parse_mod_doc(doc toml.Doc) !VgMod {
-	root := doc.to_any() as map[string]toml.Any
+	root_any := doc.to_any()
+	root := match root_any {
+		map[string]toml.Any {
+			root_any
+		}
+		else {
+			return error('mod root must be a TOML table')
+		}
+	}
 	return VgMod{
 		schema:      any_int(root, 'schema', 0)
 		id:          any_string(root, 'id', '')
@@ -133,11 +141,27 @@ fn parse_mobs(value toml.Any) ![]MobDef {
 fn parse_hooks(table map[string]toml.Any) ![]ScriptHook {
 	value := table['hooks'] or { return []ScriptHook{} }
 	mut hooks := []ScriptHook{}
-	for raw in value.array() {
-		hook := raw as map[string]toml.Any
-		hooks << ScriptHook{
-			entry: any_string(hook, 'entry', '')
-			abi:   any_string(hook, 'abi', '')
+	match value {
+		[]toml.Any {
+			for raw in value {
+				match raw {
+					map[string]toml.Any {
+						hooks << ScriptHook{
+							entry: any_string(raw, 'entry', '')
+							abi:   any_string(raw, 'abi', '')
+						}
+					}
+					else {
+						return error('hooks: expected table entry')
+					}
+				}
+			}
+		}
+		toml.Null {
+			return hooks
+		}
+		else {
+			return error('hooks: expected table array')
 		}
 	}
 	return hooks
@@ -158,6 +182,9 @@ fn table_array(value toml.Any, key string) ![]map[string]toml.Any {
 				}
 			}
 			return tables
+		}
+		toml.Null {
+			return []map[string]toml.Any{}
 		}
 		else {
 			return error('${key}: expected table array')
