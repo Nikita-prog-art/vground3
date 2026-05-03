@@ -2,14 +2,14 @@ module vground
 
 fn test_default_scheduler_is_go() {
 	config := config_from_args([])!
-	assert config.scheduler == 'go'
+	assert config.scheduler == .go
 }
 
 fn test_scheduler_accepts_go_and_deterministic() {
 	go_config := config_from_args(['--scheduler', 'go'])!
 	deterministic_config := config_from_args(['-s', 'deterministic'])!
-	assert go_config.scheduler == 'go'
-	assert deterministic_config.scheduler == 'deterministic'
+	assert go_config.scheduler == .go
+	assert deterministic_config.scheduler == .deterministic
 }
 
 fn test_removed_scheduler_names_are_rejected() {

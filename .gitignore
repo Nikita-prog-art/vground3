@@ -1,1 +1,4 @@
 v/
+.codex
+.v-analyzer/
+.vscode/

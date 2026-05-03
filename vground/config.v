@@ -2,10 +2,15 @@ module vground
 
 import strconv
 
+pub enum Scheduler {
+	go
+	deterministic
+}
+
 pub struct AppConfig {
 pub:
 	frontend     string
-	scheduler    string
+	scheduler    Scheduler
 	mod_paths    []string
 	ticks        int
 	tick_ms      int
@@ -14,7 +19,7 @@ pub:
 
 pub fn config_from_args(args []string) !AppConfig {
 	mut frontend := 'terminal'
-	mut scheduler := 'go'
+	mut scheduler_name := 'go'
 	mut mod_paths := ['mods/core.vgmod']
 	mut ticks := 16
 	mut tick_ms := 120
@@ -40,7 +45,7 @@ pub fn config_from_args(args []string) !AppConfig {
 				if i >= args.len {
 					return error('--scheduler expects go or deterministic')
 				}
-				scheduler = args[i]
+				scheduler_name = args[i]
 			}
 			'--mod', '-m' {
 				i++
@@ -92,7 +97,7 @@ pub fn config_from_args(args []string) !AppConfig {
 	if frontend !in ['terminal', 'gui'] {
 		return error('unknown frontend `${frontend}`; expected terminal or gui')
 	}
-	scheduler = normalize_scheduler(scheduler)!
+	scheduler := parse_scheduler(scheduler_name)!
 	if ticks < 1 {
 		return error('--ticks must be >= 1')
 	}
@@ -121,10 +126,13 @@ pub fn help_text() string {
 		'  deterministic  cooperative mob tasks on the frontend thread\n'
 }
 
-fn normalize_scheduler(value string) !string {
+fn parse_scheduler(value string) !Scheduler {
 	match value {
-		'go', 'deterministic' {
-			return value
+		'go' {
+			return .go
+		}
+		'deterministic' {
+			return .deterministic
 		}
 		else {
 			return error('unknown scheduler `${value}`; expected go or deterministic')

@@ -18,29 +18,13 @@ pub fn run_terminal(mut app GameApp, config AppConfig) ! {
 	println('world access: each chunk owns a mutex; actor steps lock occupied chunks')
 	println('runtime: ${runtime_summary(app.registry)}')
 	print_world(app.world, []MobView{})
-	if config.scheduler == 'deterministic' {
-		run_terminal_deterministic(mut app, actors, config)
-		return
-	}
-	events := chan SimEvent{cap: 128}
-	mut threads := start_mob_threads(app.world, app.registry, actors, events, config)
+	mut run := start_simulation(app.world, app.registry, actors, config)
 	mut state := new_terminal_state(config)
-	for state.simulation.snapshot().done < threads.len {
-		event := <-events
-		handle_terminal_event(event, mut state, app.world, config, threads.len)
+	for {
+		event := run.next_event() or { break }
+		handle_terminal_event(event, mut state, app.world, config, run.active_mobs())
 	}
-	for worker in threads {
-		worker.wait()
-	}
-	println('simulation complete')
-	print_snapshot(app.world, state.simulation.snapshot())
-}
-
-fn run_terminal_deterministic(mut app GameApp, actors []MobActor, config AppConfig) {
-	mut state := new_terminal_state(config)
-	for event in run_deterministic_simulation(app.world, app.registry, actors, config) {
-		handle_terminal_event(event, mut state, app.world, config, actors.len)
-	}
+	run.wait()
 	println('simulation complete')
 	print_snapshot(app.world, state.simulation.snapshot())
 }
@@ -109,16 +93,13 @@ fn runtime_summary(registry Registry) string {
 	return parts.join(', ')
 }
 
-fn scheduler_summary(scheduler string) string {
+fn scheduler_summary(scheduler Scheduler) string {
 	match scheduler {
-		'go' {
+		.go {
 			return 'one V runtime lightweight task per mob'
 		}
-		'deterministic' {
+		.deterministic {
 			return 'deterministic mob tasks on the frontend thread'
-		}
-		else {
-			return scheduler
 		}
 	}
 }

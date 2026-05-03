@@ -2,6 +2,16 @@ module vground
 
 import os
 
+fn collect_simulation_events(mut run SimulationRun) []SimEvent {
+	mut events := []SimEvent{}
+	for {
+		event := run.next_event() or { break }
+		events << event
+	}
+	run.wait()
+	return events
+}
+
 fn test_simulation_state_applies_events_and_exposes_snapshot() {
 	mut state := new_simulation_state()
 	state.apply_event(SimEvent{
@@ -43,6 +53,46 @@ fn test_simulation_state_applies_events_and_exposes_snapshot() {
 	}
 }
 
+fn test_start_simulation_collects_events_for_go_scheduler() {
+	core := load_mod(os.join_path(@VMODROOT, 'mods', 'core.vgmod'))!
+	registry := build_registry([core])!
+	world := new_demo_world(registry)!
+	actors := demo_mobs(registry)
+	world.place_mobs(actors)!
+	mut run := start_simulation(world, registry, actors, AppConfig{
+		frontend:     'terminal'
+		scheduler:    .go
+		mod_paths:    ['mods/core.vgmod']
+		ticks:        1
+		tick_ms:      0
+		render_every: 1
+	})
+	assert run.active_mobs() == actors.len
+	events := collect_simulation_events(mut run)
+	assert events.filter(it.kind == .spawned).len == actors.len
+	assert events.filter(it.kind == .done).len == actors.len
+}
+
+fn test_start_simulation_collects_events_for_deterministic_scheduler() {
+	core := load_mod(os.join_path(@VMODROOT, 'mods', 'core.vgmod'))!
+	registry := build_registry([core])!
+	world := new_demo_world(registry)!
+	actors := demo_mobs(registry)
+	world.place_mobs(actors)!
+	mut run := start_simulation(world, registry, actors, AppConfig{
+		frontend:     'terminal'
+		scheduler:    .deterministic
+		mod_paths:    ['mods/core.vgmod']
+		ticks:        1
+		tick_ms:      0
+		render_every: 1
+	})
+	assert run.active_mobs() == actors.len
+	events := collect_simulation_events(mut run)
+	assert events.filter(it.kind == .spawned).len == actors.len
+	assert events.filter(it.kind == .done).len == actors.len
+}
+
 fn test_deterministic_scheduler_orders_steps_by_virtual_tick_ms() {
 	core := load_mod(os.join_path(@VMODROOT, 'mods', 'core.vgmod'))!
 	registry := build_registry([core])!
@@ -51,7 +101,7 @@ fn test_deterministic_scheduler_orders_steps_by_virtual_tick_ms() {
 	world.place_mobs(actors)!
 	events := run_deterministic_simulation(world, registry, actors, AppConfig{
 		frontend:     'terminal'
-		scheduler:    'deterministic'
+		scheduler:    .deterministic
 		mod_paths:    ['mods/core.vgmod']
 		ticks:        2
 		tick_ms:      100

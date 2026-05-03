@@ -13,7 +13,7 @@ Frontends are selected with `--frontend`.
 
 The simulation is independent from the frontend. A GUI renderer can consume the same mob events and world snapshots later.
 
-Simulation events are applied to `SimulationState`, which exposes `SimulationSnapshot` values for renderers. Frontends should read snapshots instead of owning their own mob-position maps.
+Frontends start simulation through `start_simulation`, consume `SimEvent` values through `SimulationRun.next_event`, and apply them to `SimulationState`. `SimulationState` exposes `SimulationSnapshot` values for renderers, so frontends read snapshots instead of owning their own mob-position maps.
 
 ## Mod Model
 
@@ -31,7 +31,7 @@ The prototype does not dynamically compile or load mod code yet. It validates an
 
 ## Concurrency
 
-The scheduler is selected with `--scheduler`. The default is `go`, following V's current concurrency docs.
+The scheduler is selected with `--scheduler` and parsed into the `Scheduler` enum. The default is `go`, following V's current concurrency docs.
 
 - `go`: each mob runs in its own lightweight V runtime task through `go`.
 - `deterministic`: mobs are stepped as cooperative tasks on the frontend thread. This is useful for reproducible debugging and leaves room for a real fiber runtime later.

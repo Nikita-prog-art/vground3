@@ -47,6 +47,14 @@ mut:
 	done      int
 }
 
+pub struct SimulationRun {
+mut:
+	events        chan SimEvent
+	workers       []thread
+	done          int
+	expected_done int
+}
+
 struct DeterministicStep {
 	actor_idx int
 	tick      int
@@ -105,6 +113,52 @@ pub fn (state &SimulationState) snapshot() SimulationSnapshot {
 	}
 }
 
+pub fn start_simulation(world &World, registry Registry, actors []MobActor, config AppConfig) SimulationRun {
+	match config.scheduler {
+		.go {
+			events := chan SimEvent{cap: 128}
+			workers := start_mob_threads(world, registry, actors, events, config)
+			return SimulationRun{
+				events:        events
+				workers:       workers
+				expected_done: workers.len
+			}
+		}
+		.deterministic {
+			sim_events := run_deterministic_simulation(world, registry, actors, config)
+			events := chan SimEvent{cap: sim_events.len}
+			for event in sim_events {
+				events <- event
+			}
+			return SimulationRun{
+				events:        events
+				expected_done: actors.len
+			}
+		}
+	}
+}
+
+pub fn (run &SimulationRun) active_mobs() int {
+	return run.expected_done
+}
+
+pub fn (mut run SimulationRun) next_event() ?SimEvent {
+	if run.done >= run.expected_done {
+		return none
+	}
+	event := <-run.events or { return none }
+	if event.kind == .done {
+		run.done++
+	}
+	return event
+}
+
+pub fn (mut run SimulationRun) wait() {
+	for worker in run.workers {
+		worker.wait()
+	}
+}
+
 pub fn demo_mobs(registry Registry) []MobActor {
 	candidates := [
 		['core:slime', '1', '3', '3'],
@@ -130,7 +184,7 @@ pub fn demo_mobs(registry Registry) []MobActor {
 	return actors
 }
 
-pub fn start_mob_threads(world &World, registry Registry, actors []MobActor, events chan SimEvent, config AppConfig) []thread {
+fn start_mob_threads(world &World, registry Registry, actors []MobActor, events chan SimEvent, config AppConfig) []thread {
 	mut threads := []thread{cap: actors.len}
 	for actor in actors {
 		def := registry.mobs[actor.def_id] or { continue }
